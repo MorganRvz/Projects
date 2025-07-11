@@ -1,6 +1,6 @@
 ---
 title: "Elect 6 Learning Evidence: Research Project"
-author: "Arvee Jane Montera, Keziah Bianca Ramos, Angel Mae Sabido"
+author: "Arvee Jane Montera"
 date: "`r Sys.Date()`"
 output:
   pdf_document: default
