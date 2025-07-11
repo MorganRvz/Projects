@@ -1,0 +1,247 @@
+---
+title: "Exercise 1"
+author: "Arvee Jane Montera "
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse) #data manipulation
+library(caret) #building predictive model
+library(rsample) # For data splitting (stratified)
+library(pROC)
+```
+
+
+About the dataset: The dataset used in this study was obtained from the November 2017 update of the SEER Program (Surveillance, Epidemiology, and End Results) provided by the National Cancer Institute (NCI), which offers detailed population-based cancer statistics. It includes female patients diagnosed with infiltrating duct and lobular carcinoma of the breast (as classified by SEER primary site recode NOS histology codes 8522/3) between 2006 and 2010. Patients with missing information on tumor size, examined regional lymph nodes, positive regional lymph nodes, or a survival period of less than one month were excluded. The final dataset comprises 4,024 patients, with the target variable being the status of the patients, categorized as alive or dead.
+1.Perform appropriate data splitting method (justify why that specific method is used)
+ We used the the 80%:20% data splitting using the function initial_split and an argument of Strata, since the target variable has an imbalance where (Alive:84.69185%, Dead:15.30815%), it is preferable to use the argument strata to aid the imbalance and stratified is good technique in handling data imbalance.
+```{r}
+#The data
+library(readxl)
+Breast <- read_excel("Breast.xlsx")
+View(Breast)
+freq <- table(Breast$Status)
+prop <- prop.table(freq)
+prop * 100
+```
+
+```{r}
+#1. Data Splitting
+set.seed(123)
+split <- initial_split(Breast, prop=0.8, strata = "Status")
+split
+trainData <- training(split)
+testData <- testing(split)
+```
+2.Before we choose a certain method in handling class imbalance, we compare both downsampling and upsampling. After the result, the downsampling has an accuracy of 81.8%, while upsampling has an accuracy of 81.3%. 
+In terms of the testing, the accuracy of downsampling is 82.6%, while the upsampling has an accuracy of 79.3%. which is lower than the training model. Hence, we choose the best method, which is the down sampling which yields a HIGHER ACCURACY between training and predicting model.
+3. The answer of the item 3 is the following code chunks.
+```{r}
+#KNN boot model: Upsampling
+train_control <- trainControl(method = "boot", number = 10, 
+                               classProbs = TRUE, 
+                               sampling = "up"
+                              )
+k_values <- 2:25 # int ang strc since di mo gana ang numerical if using seq function
+tune_grid <- expand.grid(k = k_values)
+```
+```{r}
+set.seed(123)                        
+knn_model_boot <- train(Status ~ ., data = trainData, 
+                        method = "knn", 
+                        trControl = train_control, 
+                        tuneGrid = tune_grid, metric="Accuracy")
+knn_model_boot
+```
+
+```{r}
+#Predicting
+#Testing Performance
+knn_mod_pred_class_bt <- predict.train(knn_model_boot, testData)
+knn_mod_pred_class_bt
+glimpse(knn_mod_pred_class_bt)
+
+#Create Confusion Matrix
+knn_boot <- confusionMatrix(data=knn_mod_pred_class_bt, 
+                             reference=as.factor(testData$Status))
+knn_boot
+```
+
+```{r}
+knn_mode_pred_probs <- predict(knn_model_boot, testData, type="prob")
+head(knn_mode_pred_probs)
+glimpse(knn_mode_pred_probs)
+#Extracting
+knn_mode_pred_probs_positive <- knn_mode_pred_probs[,"Alive"]
+head(knn_mode_pred_probs_positive)
+#Create ROC curve
+roc_curve <- roc(testData$Status, knn_mode_pred_probs_positive)
+#Calculate AuC
+auc_value <- auc(roc_curve)
+auc_value
+plot(roc_curve)
+```
+
+
+
+```{r}
+#Downsampling
+train_control_down <- trainControl(method = "boot", number = 10, 
+                               savePredictions = "final", 
+                               classProbs = TRUE, 
+                               sampling = "down")
+knn_model_boot_down <- train(Status ~ ., data = trainData, 
+                        method = "knn", 
+                        trControl = train_control_down, 
+                        tuneGrid = tune_grid, metric="Accuracy")
+knn_model_boot_down
+```
+```{r}
+set.seed(123)
+testPred_boot <- predict(knn_model_boot_down, newdata=testData)
+testPred_boot
+conf_boot_down <- confusionMatrix(testPred_boot, as.factor(testData$Status))
+conf_boot_down
+```
+```{r}
+set.seed(123)
+knn_mode_pred_probs_d <- predict(knn_model_boot_down, testData, type="prob")
+head(knn_mode_pred_probs_d)
+glimpse(knn_mode_pred_probs_d)
+#Extracting
+knn_mode_pred_probs_positive_d <- knn_mode_pred_probs_d[,"Alive"]
+head(knn_mode_pred_probs_positive_d)
+#Create ROC curve
+roc_curve <- roc(testData$Status, knn_mode_pred_probs_positive_d)
+#Calculate AuC
+auc_value <- auc(roc_curve)
+auc_value
+plot(roc_curve)
+```
+
+
+```{r}
+#5 Cross Validation
+#Up
+set.seed(123)
+train_control_cv <- trainControl(method = "cv", number = 5, 
+                                  savePredictions = "final", 
+                                  classProbs = TRUE,
+                                 sampling= "up")
+
+knn_model_cv <- train(Status ~ ., data = trainData, 
+                        method = "knn", 
+                        trControl = train_control_cv, 
+                        tuneGrid = tune_grid, metric="Accuracy")
+knn_model_cv
+```
+
+```{r}
+set.seed(123)
+#Prediction
+testPred <- predict(knn_model_cv, newdata=testData)
+testPred
+conf_cv <- confusionMatrix(testPred, as.factor(testData$Status))
+conf_cv
+```
+
+```{r}
+#AUC
+set.seed(123)
+knn_mode_pred_probs_CVu <- predict(knn_model_cv, testData, type="prob")
+head(knn_mode_pred_probs_CVu)
+glimpse(knn_mode_pred_probs_CVu)
+#Extracting
+knn_mode_pred_probs_positive_CVu <- knn_mode_pred_probs_CVu[,"Alive"]
+head(knn_mode_pred_probs_positive_CVu)
+#Create ROC curve
+roc_curve_cvu <- roc(testData$Status, knn_mode_pred_probs_positive_CVu)
+#Calculate AuC
+auc_value_cvu <- auc(roc_curve_cvu)
+auc_value_cvu
+plot(roc_curve_cvu)
+```
+
+
+
+```{r}
+set.seed(123)
+#5 Cross Validation
+#Down
+train_control_cvd <- trainControl(method = "cv", number = 5, 
+                                  classProbs = TRUE,
+                                 sampling= "down")
+
+knn_model_cvd <- train(Status ~ ., data = trainData, 
+                        method = "knn", 
+                        trControl = train_control_cvd, 
+                        tuneGrid = tune_grid, metric="Accuracy")
+knn_model_cvd
+```
+
+```{r}
+
+#Prediction
+testPred_cv_d <- predict(knn_model_cvd, newdata=testData)
+testPred_cv_d
+conf_cvd <- confusionMatrix(testPred_cv_d, as.factor(testData$Status))
+conf_cvd
+```
+```{r}
+set.seed(123)
+knn_mode_pred_probs_CVd <- predict(knn_model_cvd, testData, type="prob")
+head(knn_mode_pred_probs_CVd)
+glimpse(knn_mode_pred_probs_CVd)
+#Extracting
+knn_mode_pred_probs_positive_CVd <- knn_mode_pred_probs_CVd[,"Alive"]
+head(knn_mode_pred_probs_positive_CVd)
+#Create ROC curve
+roc_curve_CVd <- roc(testData$Status, knn_mode_pred_probs_positive_CVd)
+#Calculate AuC
+auc_value_CVd <- auc(roc_curve)
+auc_value_CVd
+plot(roc_curve)
+```
+
+4.Tabulate the training and testing performance of the models. Upsampling: Boot Vs CV
+```{r}
+#Comaprions of Bootstrapping & CV: UP
+#Exracting the upsampling of CV
+accuracycv <- conf_cv$overall["Accuracy"]
+spec_cv <- conf_cv$byClass["Specificity"]
+sen_cv <- conf_cv$byClass["Sensitivity"]
+#Extracting the upsampling of Boot
+accuracy_boot <- knn_boot$overall["Accuracy"]
+spec_boot <-knn_boot$byClass["Specificity"]
+sen_boot <- knn_boot$byClass["Sensitivity"]
+Boot_CV_Up <- data.frame(Metric=c("Accuracy", "Specificity", "Sensitivity"),
+                         Knn_cv_u=round(c(accuracycv,sen_cv, spec_cv),3), 
+                         Knn_boot_up=round(c(accuracy_boot, spec_boot, sen_boot),3))
+Boot_CV_Up
+```
+4.Tabulate the training and testing performance of the models. Downsampling: Boot Vs CV
+```{r}
+#Downsampling: 
+accuracycv <- conf_cvd$overall["Accuracy"]
+spec_cv <- conf_cvd$byClass["Specificity"]
+sen_cv <- conf_cvd$byClass["Sensitivity"]
+#Extracting the upsampling of Boot
+accuracy_boot <- conf_boot_down$overall["Accuracy"]
+spec_boot <-conf_boot_down$byClass["Specificity"]
+sen_boot <- conf_boot_down$byClass["Sensitivity"]
+Boot_CV_Up <- data.frame(Metric=c("Accuracy", "Specificity", "Sensitivity"),
+                         Knn_cv_Down=round(c(accuracycv,sen_cv, spec_cv),3), 
+                         Knn_boot_Down=round(c(accuracy_boot, spec_boot, sen_boot),3))
+Boot_CV_Up
+
+```
+5.After the meticulous tabulation, we have the following results, the knn-cross validation (downsampling) yielded an accuracy of 84.2%, while the kNN-boot strapping (downsampling) yielded an accuracy of 84.5%. As we observe, there is only tiny difference between the two models. Since kNN-Boot has higher accuracy, we conclude that kNN model with bootstrapping (downsampling) is better. 
+
+
