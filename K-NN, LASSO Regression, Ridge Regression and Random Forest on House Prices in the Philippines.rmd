@@ -1,0 +1,270 @@
+---
+title: "Elect 6 Learning Evidence: Research Project"
+author: "Arvee Jane Montera, Keziah Bianca Ramos, Angel Mae Sabido"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document: default
+---
+## i.Executive Summary   
+  This project developed K-NN, Ridge Regression, Lasso Regression, and Random Forest to predict the Price house in the Philippines. In this project, the dataset contains missing values and two  variables that are not necessary for the modelling. The Price which is the target variable was not normally distributed. Moreover, the input variables were not normally distributed. The researchers omitted the missing values and the Price (target variable) was transformed using log. Furthermore, the input variables were managed during the Data Preprocessing. This project evaluated the performance of four machine learning models—KNN, Ridge Regression, Lasso Regression, and Random Forest—in predicting property prices using features like Bedrooms, Bathrooms, Floor Area, Land Area, Latitude, and Longitude. The KNN model showed an RMSE of 3.91, R² of 0.75, and MAE of 3.76, indicating decent performance with room for improvement. Both Ridge Regression and Lasso Regression performed strongly, with an RMSE of 0.50, R² of 0.84, and MAE between 0.33 and 0.38, offering more reliable results due to their regularization techniques. The Random Forest model delivered the best results, achieving an RMSE of 0.40, R² of 0.90, and MAE of 0.25, outperforming the other models by capturing more complex relationships in the data. Additionally, a cluster analysis grouped the properties into four distinct clusters based on their characteristics. The descriptive summary of these clusters revealed meaningful differences between property types, offering valuable insights into how property features influence pricing. By combining clustering with models like KNN or regression, predictions could be further refined, focusing on more homogeneous groups of properties. Ultimately, Random Forest provided the most accurate predictions, and integrating clustering could enhance the model’s accuracy by tailoring predictions to specific property groups.
+
+## ii. Data Description  
+  This dataset, titled "Philippines Housing Market," was obtained in Kaggle and provides detailed   information on real estate properties in the Philippines as of March 20,2024. It includes property   descriptions, locations, prices, the number of bedrooms and bathrooms, floor and land areas, and   geographical coordinates. The target variable for analysis within this dataset is prices, which serves as a critical metric for understanding market trends and property valuations.  
+
+### Related Literature Review on the Target Variable
+  Real estate datasets focused on housing prices have garnered significant attention due to their   applications in market analysis and predictive modeling. For instance, a study utilizing a dataset   from Kaggle aimed at predicting house prices in Pasig City demonstrated how machine learning   algorithms can effectively analyze property characteristics to forecast prices. This research   highlighted the importance of features such as location, size, and amenities in determining property values (Cajipe, 2024)
+  Additionally, a dataset available on Figshare emphasizes the utility of comprehensive real estate data for developing predictive models using machine learning techniques like Support Vector Regression (SVR) and Gradient Boosting Machine (GBM). This dataset includes key attributes such as area, floor number, and proximity to amenities, which are essential for accurate price predictions (Yeh & Hsu, 2018).
+Furthermore, the growing trend of employing big data analytics in real estate has been documented in various studies. For instance, Xiao (2022) discusses the benefits and challenges of utilizing big data for comprehensive analysis within the real estate market, underscoring its potential to enhance decision-making processes (Xiao, 2022). Such insights reflect a broader movement towards data-driven approaches in real estate investment and policy-making.
+In summary, the "Philippines Housing Market" dataset not only enriches the existing body of knowledge but also supports practical applications in real estate analytics by providing updated and detailed information on property prices across the Philippines.
+
+## iii. Prerequisite Packages (Loading packages with proper documentation)
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r, message=FALSE,warning=FALSE}
+# Helper Packages
+library(dplyr) # Data manipulation
+
+# Feature Engineering Packages
+library(caret) #Model Training 
+library(recipes) # Preprocessing pipeline
+library(rsample) # Data splitting
+library(tidyverse) # Data analysis
+library(glmnet) # Regularized regression
+library(randomForest) # For RandomForest Algorithm
+library(cluster) # Cluster analysis
+library(factoextra) # Visualization tools for Clusters
+```
+## iv. Predictive Modeling
+```{r, message=FALSE, warning=FALSE}
+library(readr)
+data <- read_csv("C:/Users/arvee/Downloads/Housing_v2.csv")
+```
+
+```{r}
+glimpse(data)
+```
+
+
+### A. Data Exploration
+1. Removing the unnecessary columns in the dataset
+```{r}
+data <- data[,-1:-2]
+#Description  and Location is unnecessary 
+glimpse(data)
+
+```
+
+2. Checking if there is any missing values
+
+```{r}
+sum(is.na(data))
+```
+3. Removing the missing values
+```{r}
+data <- na.omit(data)
+```
+
+4. Summary Descriptive
+```{r}
+summary(data)
+```
+
+
+5. Checking the Distribution of the Price (Target Variable)
+```{r}
+hist(data$Price)
+```
+6. Using Log to transform the Price
+```{r}
+data$Price <- log(data$Price)
+hist(data$Price)
+data
+```
+Findings: The data seems normally distributed
+
+7. Checking the Distribution of the Feature Variables
+```{r}
+par(mfrow=c(2,3))
+hist(data$Bedrooms)
+hist(data$Bathrooms)
+hist(data$`Floor Area`)
+hist(data$`Land Area`)
+hist(data$Latitude)
+hist(data$Longitude)
+```
+
+### B. Data Preprocessing
+## Data Splitting
+
+```{r}
+set.seed(123)
+
+split <- initial_split(data, 0.8) # 80% Training, 20% Testing
+traindata <- training(split)
+testingdata <- testing(split)
+```
+#### Preprocessing using functions from the recipes library
+```{r}
+blueprint <-recipe(Price~., traindata) %>%
+  step_YeoJohnson(all_predictors()) %>% #For handling the Skewed data
+  step_scale(all_predictors()) #For scaling all predictors: mean 1 & sd 0
+
+
+pre <- prep(blueprint, traindata) #prepping the blueprint with the train dataset
+baked <- bake(pre, traindata) #baking pre & traindata
+baketest <- bake(pre, testingdata) #Also baking the testingdata for external validation
+                                  # For the purpose of no data leakage
+```
+#### K-NN model with 10-K Fold Cross Validation
+```{r}
+set.seed(123)
+knnmodel <- train(Price ~.,
+                  data = baked,
+                  method="knn",
+                  tuneGrid= expand.grid(k=2:25), #Grid Search is 2:25 with an increment of 1
+                  trControl= trainControl(method="cv", number =10), #Using 10-Folds Cross Validation
+                  metric="Rsquared"
+) 
+knnmodel
+knnmodel$bestTune #Selecting the Best Tune
+round(knnmodel$results[6,],2) #Rounded the results into two digits for minimalism
+```
+### External Validation of KNN MODEL
+```{r}
+pred <- predict(knnmodel, newdata = subset(baketest, select=-Price)) #Using baketest in the prediction #For no Data Leakage
+round(postResample(pred, obs=baketest$Price),2) 
+```
+
+### Conclusion:  
+
+  The k-NN model performed much better on the testing dataset compared to the training dataset. In training, it had higher errors (RMSE = 7 and MAE = 0.88) and explained only 43% of the target's variance (R² = 0.43). On the testing dataset, the errors were much smaller (RMSE = 0.50 and MAE = 0.33), and it explained 84% of the variance (R² = 0.84). This shows the model predicts new data accurately and generalizes well without overfitting.
+
+#### Ridge Regression
+```{r}
+reg.grid <- seq(0.0001, 0.25, by=0.001) #sequence of values for regularization parameters (lambda) 
+```
+
+
+```{r}
+set.seed(143)
+
+ridge <- train(blueprint,traindata, method="glmnet",
+               trControl= trainControl(method="cv", number =10),#Using 10-Folds Cross Validation
+               tuneGrid = expand.grid(alpha=0, lambda=reg.grid),# specifies the Ridge regression 
+               metric="Rsquared")
+ridge
+ridge$bestTune
+round(ridge$results[112,],2)
+```
+### External Validation
+```{r}
+preridge <- predict(ridge, newdata = subset(baketest, select=-Price))
+round(postResample(preridge, obs=testingdata$Price),2)
+```
+### Conclusion:  
+  The performance of the model on the training data is much better compared to the testing data. On the training set, the model achieved an RMSE of 0.51, R² of 0.83, and MAE of 0.39, showing it made accurate predictions with good consistency. However, on the testing data, the RMSE increased to 3.91, the R² dropped to 0.75, and the MAE increased to 3.76, indicating the model’s predictions were less accurate. This suggests that the model may have overfitted to the training data, meaning it worked well on the data it was trained on but struggled to generalize to new, unseen data. While the testing results are still reasonable, the performance drop indicates there may be room for improvement in terms of generalization.  
+
+#### Lasso Regression
+```{r}
+set.seed(143)
+
+lasso <- train(blueprint,traindata, method="glmnet",
+               trControl= trainControl(method="cv", number =10), # 10-fold cross-validation 
+               tuneGrid = expand.grid(alpha=1, lambda=reg.grid), #alpha=1 specifies the Lasso regression 
+               metric="Rsquared")
+lasso
+lasso$bestTune
+round(lasso$results[3,],2)
+```
+### External Validation
+```{r}
+prlasso <- predict(lasso, newdata = subset(baketest, select=-Price))
+round(postResample(prlasso, obs=testingdata$Price),2)
+```
+### Conclusion:  
+
+  The model performs much better on the training data compared to the testing data. On the training set, the RMSE is 0.5, R² is 0.84, and MAE is 0.38, showing that the model makes accurate predictions. However, when tested on new data, the RMSE increases to 3.47, the R² drops to 0.63, and the MAE goes up to 3.29. This suggests that the model struggled to generalize and didn't perform as well on the testing data. The increase in error and the lower R² indicate that the model may have overfitted to the training data, meaning it learned the training data too well, including the noise, but it couldn't predict new data as accurately.
+
+#### Random Forest with 10-Fold Cross Validation
+```{r}
+set.seed(3)
+rf <- train(Price ~., baked,
+            method="rf",
+            trControl=trainControl(method="cv",number=10),
+            tuneGrid =expand.grid(mtry=c(2,4,3)))
+rf
+rf$bestTune
+round(rf$results[1,],2)
+```
+### External Validation
+```{r}
+prerf <- predict(rf, newdata= subset(baketest, select=-Price))
+round(postResample(prerf, obs=baketest$Price),2)
+```
+### Conclusion:  
+  The Random Forest model performs very well on both the training and testing datasets. It achieves high R² values (0.92 for training, 0.90 for testing), suggesting strong predictive power, and maintains relatively low RMSE and MAE, indicating accurate predictions with minimal error. The model demonstrates good consistency and generalization across both dataset.
+
+## V. Data Clustering
+
+```{r}
+fviz_nbclust(baked,kmeans, method="wss") #Searching for the optimal number of Clusters
+```
+### The optimal numberr of clusters is 4, based on the Elbow Method
+```{r}
+set.seed(123)
+km <- kmeans(baked, centers=4, nstart=40) #Centers at 4 since it is the optimal number of clusters 
+#and 40 different initialization will be tried
+km
+```
+```{r}
+fviz_cluster(km, baked)
+```
+### Conclusion:  
+
+  This plot shows the result of grouping data into four clusters. Each cluster is represented by a different color and shape. The x-axis (Dim1) and y-axis (Dim2) represent two main patterns in the data, and together they explain most of the differences between  clusters.  
+
+-The red cluster is in the top-right corner.  
+-The green cluster is at the bottom-left.  
+-The blue cluster is in the middle.  
+-The purple cluster is in the top-left.  
+
+Each dot is a data point, and the boundaries around the clusters show where each group starts and ends. The plot suggests that data can be divided into four separate groups that share similar characteristics.
+### Summary Statistics
+
+### For the Mean
+```{r}
+Cmean <- aggregate(baked, by=list(km$cluster),mean)
+Cmean
+```
+### For the Maximum
+```{r}
+Cmax <-aggregate(baked, by=list(km$cluster),max)
+Cmax
+```
+### For the Minimum
+```{r}
+Cmin<-aggregate(baked, by=list(km$cluster),min)
+Cmin
+```
+### For the Standard Deviation
+```{r}
+Csd <- aggregate(baked, by=list(km$cluster),sd)
+Csd
+```
+### For the Variance
+```{r}
+Cvar <- aggregate(baked, by=list(km$cluster),var)
+```
+### For the Median
+```{r}
+Cmedi <- aggregate(baked, by=list(km$cluster), median)
+Cmedi
+```
+
+## vi. Conclusion
+
+  The KNN model showed solid performance in predicting property prices, with an RMSE of 3.91, R² of 0.75, and MAE of 3.76 on the test set, indicating a good but slightly imperfect fit. In comparison, Ridge Regression achieved an RMSE of 0.50, R² of 0.84, and MAE of 0.33, demonstrating a better fit with lower prediction errors. Lasso Regression had similar results to Ridge, with an RMSE of 0.50, R² of 0.84, and MAE of 0.38, suggesting that both regularized regression models handled the data effectively. On the other hand, the Random Forest model excelled with an RMSE of 0.40, R² of 0.90, and MAE of 0.25, outperforming the KNN, Ridge, and Lasso models, showcasing its ability to handle complex relationships in the data.
+
+  Furthermore, the clustering analysis grouped the properties into four distinct clusters based on features like Bedrooms, Bathrooms, Floor Area, Land Area, Latitude, and Longitude. A descriptive summary was applied to each cluster, revealing clear differences in property types and their pricing patterns. This analysis provided valuable insights into how property characteristics impact prices, highlighting the potential benefits of refining predictions based on specific clusters. In conclusion, while the Random Forest model performed best overall, incorporating clustering could enhance predictions by focusing on the unique characteristics of each property group, further improving model accuracy.
